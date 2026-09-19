@@ -1,0 +1,148 @@
+name: port-addresslib-v5
+
+# Unofficial build of SexLab P+ for Skyrim AE 1.7.104.
+#
+# SexLabUtil.dll (and Prism's SexLabPPrism.dll) load
+# Data/SKSE/Plugins/versionlib-1-7-104-0.bin and reject it with
+# "Unsupported address library format: {}". That bin is Address Library
+# FORMAT 5. The CommonLibSSE-NG revision this project pins has no
+# include/REL/IDDB.h at all; the revision below has it with
+# `enum class Format { ... SSEv5 }`.
+#
+# So the whole port is that submodule bump. Only the native target is built:
+# the scripts / ESM / assets come from the matching official release, and the
+# output is packaged as a mod Amethyst can install in one click.
+#
+# Upstream is Apache-2.0; this is an unofficial, minimally modified build. Keep
+# the licence, and say plainly that it is unofficial.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "SexLabpp revision to build (must match the installed mod's scripts)"
+        required: true
+        default: "e6364f8c"        # PROJECT_VERSION 2.17.1, 2026-03-31
+      label:
+        description: "Version label for the artifact"
+        required: true
+        default: "2.17.1"
+  push:
+    tags: ["port-*"]
+
+env:
+  COMMONLIB_COMMIT: 98c8df05f1c05915b16af45181c7638ef925f465
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Confirm the source version
+        shell: bash
+        run: |
+          ver=$(grep -m1 PROJECT_VERSION xmake.lua | sed 's/.*"\(.*\)".*/\1/')
+          echo "PROJECT_VERSION=$ver  commit=$(git rev-parse --short HEAD)"
+          [ -n "${{ github.event.inputs.label }}" ] && echo "label=${{ github.event.inputs.label }}"
+
+      # Done here rather than by pinning the gitlink: it keeps the diff to
+      # upstream reviewable (one commit hash, printed in the log) and works even
+      # when the wanted revision is not an ancestor of this branch.
+      - name: Pin CommonLibSSE-NG to the format-5 revision
+        shell: bash
+        run: |
+          cd lib/CommonLibSSE-NG
+          git fetch --depth 1 origin "$COMMONLIB_COMMIT"
+          git checkout --detach "$COMMONLIB_COMMIT"
+          git log --oneline -1
+          test -f include/REL/IDDB.h || { echo "IDDB.h missing - wrong revision"; exit 1; }
+          grep -q "SSEv5" include/REL/IDDB.h || { echo "no SSEv5 in IDDB.h"; exit 1; }
+          grep -q "format-5" include/REL/IDDB.h || echo "note: format-5 comment not found, continuing"
+          echo "format-5 reader present in the pinned revision"
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+      - name: Cache xmake packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.xmake
+          key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua', 'xmake-requires.lock') }}
+          restore-keys: xmake-pkgs-${{ runner.os }}-
+
+      - name: Build SexLabUtil.dll
+        shell: pwsh
+        run: |
+          xmake f -p windows -a x64 -m release -y
+          xmake build SexLabUtil -v
+          Get-ChildItem -Recurse -Filter SexLabUtil.dll | Select-Object FullName, Length
+
+      # A mod zip: data at the archive root, so Amethyst's "Install mod from
+      # file..." produces a mod without anyone placing files by hand.
+      - name: Package the mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          label="${{ github.event.inputs.label || '2.17.1' }}"
+          pkg="SexLab P+ ${label} - 1.7.104 addresslib-v5"
+          mkdir -p "out/$pkg/SKSE/Plugins"
+          dll=$(find build -name SexLabUtil.dll | head -1)
+          [ -n "$dll" ] || { echo "SexLabUtil.dll not found"; exit 1; }
+          cp "$dll" "out/$pkg/SKSE/Plugins/"
+          cp LICENSE "out/$pkg/LICENSE-SexLabpp.txt"
+          cat > "out/$pkg/README.txt" <<EOF
+          SexLab P+ ${label} - native plugin rebuilt for Skyrim AE 1.7.104
+          ==============================================================
+
+          Contains one file: SKSE/Plugins/SexLabUtil.dll
+
+          Why: SexLab P+ loads Data/SKSE/Plugins/versionlib-1-7-104-0.bin and
+          rejects it with "Unsupported address library format: {}". That file is
+          Address Library format 5, and the CommonLibSSE-NG revision SexLab P+
+          pins has no reader for it. This build uses the revision whose IDDB.h
+          defines Format::SSEv5, and is otherwise upstream ${label} source
+          (commit $(git rev-parse --short HEAD)).
+
+          Install: one click, like any mod - Amethyst: Mods -> Install mod from
+          file..., then make sure this mod wins over the base SexLab P+ mod (it
+          only replaces SKSE/Plugins/SexLabUtil.dll, so conflicts are limited
+          to that one file). Vortex/MO2: install and let it overwrite.
+
+          It must match the scripts you have installed: this DLL is built from
+          the source of P+ ${label}, so install it over P+ ${label}.
+
+          NOT covered: SexLab P+ Prism. It ships compiled only, with no public
+          source, so it cannot be rebuilt here - it needs its author.
+
+          Source: github.com/SLP-Community/SexLabpp (Apache-2.0), plus the
+          submodule bump above and nothing else. Unofficial build.
+          EOF
+          (cd out && 7z a "../SexLab-P-${label}-1.7.104-addresslibv5.zip" "$pkg")
+          ls -l "SexLab-P-${label}-1.7.104-addresslibv5.zip"
+
+      - name: Report hashes
+        shell: bash
+        run: |
+          sha256sum out/*/SKSE/Plugins/SexLabUtil.dll | sed 's/^/  dll  /'
+          sha256sum *.zip | sed 's/^/  zip  /'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SexLab-P-${{ github.event.inputs.label || '2.17.1' }}-1.7.104-addresslibv5
+          path: "*.zip"
+
+      - name: Attach to a release when tagging
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.zip"
+          body: |
+            Unofficial SexLab P+ build for Skyrim AE 1.7.104: SexLabUtil.dll
+            rebuilt against the CommonLibSSE-NG revision that reads Address
+            Library format 5. Install over the matching official P+ release.
+            Prism is not covered (no public source).

@@ -36,6 +36,11 @@ env:
   # (1.7.99+), which is what versionlib-1-7-104-0.bin is.
   COMMONLIB_COMMIT: abe9ca7b7318dbc04bccfcd59fc3fb670244c2d7
 
+# Needed so softprops/action-gh-release can create/attach the release on tag
+# pushes; the default GITHUB_TOKEN is read-only and returned HTTP 403 without it.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -108,13 +113,14 @@ jobs:
         run: |
           set -euo pipefail
           label="${{ github.event.inputs.label || '2.17.1' }}"
-          pkg="SexLab P+ ${label} - 1.7.104 addresslib-v5"
-          mkdir -p "out/$pkg/SKSE/Plugins"
+          # SKSE/Plugins/SexLabUtil.dll at the archive ROOT (no wrapper folder),
+          # so Amethyst's "Install mod from file..." needs no manual placement.
+          mkdir -p out/SKSE/Plugins
           dll=$(find build -name SexLabUtil.dll | head -1)
           [ -n "$dll" ] || { echo "SexLabUtil.dll not found"; exit 1; }
-          cp "$dll" "out/$pkg/SKSE/Plugins/"
-          cp LICENSE "out/$pkg/LICENSE-SexLabpp.txt"
-          cat > "out/$pkg/README.txt" <<EOF
+          cp "$dll" out/SKSE/Plugins/
+          cp LICENSE out/LICENSE-SexLabpp.txt
+          cat > out/README-PORT.txt <<EOF
           SexLab P+ ${label} - native plugin rebuilt for Skyrim AE 1.7.104
           ==============================================================
 
@@ -141,13 +147,13 @@ jobs:
           Source: github.com/SLP-Community/SexLabpp (Apache-2.0), plus the
           submodule bump above and nothing else. Unofficial build.
           EOF
-          (cd out && 7z a "../SexLab-P-${label}-1.7.104-addresslibv5.zip" "$pkg")
+          (cd out && 7z a "../SexLab-P-${label}-1.7.104-addresslibv5.zip" SKSE README-PORT.txt LICENSE-SexLabpp.txt)
           ls -l "SexLab-P-${label}-1.7.104-addresslibv5.zip"
 
       - name: Report hashes
         shell: bash
         run: |
-          sha256sum out/*/SKSE/Plugins/SexLabUtil.dll | sed 's/^/  dll  /'
+          sha256sum out/SKSE/Plugins/SexLabUtil.dll | sed 's/^/  dll  /'
           sha256sum *.zip | sed 's/^/  zip  /'
 
       - uses: actions/upload-artifact@v4

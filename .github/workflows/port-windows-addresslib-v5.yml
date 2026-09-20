@@ -88,7 +88,7 @@ jobs:
         shell: pwsh
         run: |
           xmake f -p windows -a x64 -m release -y
-          xmake -v build SexLabUtil
+          xmake build SexLabUtil
           Get-ChildItem -Recurse -Filter SexLabUtil.dll | Select-Object FullName, Length
 
       # A mod zip: data at the archive root, so Amethyst's "Install mod from

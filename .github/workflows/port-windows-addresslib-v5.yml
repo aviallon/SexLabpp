@@ -31,7 +31,10 @@ on:
     tags: ["port-*"]
 
 env:
-  COMMONLIB_COMMIT: 98c8df05f1c05915b16af45181c7638ef925f465
+  # Latest `ng` HEAD of alandtse/CommonLibVR (2026-09-20). Its include/REL/IDDB.h
+  # defines Format::SSEv5 and load_v5(), i.e. it reads Address Library format 5
+  # (1.7.99+), which is what versionlib-1-7-104-0.bin is.
+  COMMONLIB_COMMIT: abe9ca7b7318dbc04bccfcd59fc3fb670244c2d7
 
 jobs:
   build:
@@ -50,8 +53,15 @@ jobs:
         run: |
           want="${{ github.event.inputs.ref || 'e6364f8c' }}"
           label="${{ github.event.inputs.label || '2.17.1' }}"
+          # The 2.17.1 source predates current CommonLibSSE-NG and does not compile
+          # against it (deprecated SKSE::AllocTrampoline, removed SKSEAPI macro),
+          # so a small compatibility patch kept on this branch is applied on top.
+          # Copy it out of the tree first: checking out the older revision would
+          # remove it.
+          cp .github/port/1.7.104-commonlib-api.patch /tmp/port.patch
           git checkout --detach "$want"
           git submodule update --init --recursive
+          git apply --verbose /tmp/port.patch
           ver=$(grep -m1 PROJECT_VERSION xmake.lua | sed 's/.*"\(.*\)".*/\1/')
           echo "source commit $(git rev-parse --short HEAD)  PROJECT_VERSION=$ver  label=$label"
           # A DLL has to match the scripts it is installed over, so refuse to

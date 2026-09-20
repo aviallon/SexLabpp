@@ -1,0 +1,53 @@
+diff --git a/src/PCH.h b/src/PCH.h
+index c2cd7ddc..a640d178 100644
+--- a/src/PCH.h
++++ b/src/PCH.h
+@@ -68,7 +68,8 @@ namespace stl
+     void write_thunk_call(std::uintptr_t a_src)
+     {
+         auto& trampoline = SKSE::GetTrampoline();
+-        SKSE::AllocTrampoline(14);
++        // P+ 1.7.104 port: SKSE::AllocTrampoline() is [[deprecated]] in current
++        // CommonLibSSE-NG; the trampoline is allocated by SKSE::Init().
+ 
+         T::func = trampoline.write_call<5>(a_src, T::thunk);
+     }
+diff --git a/src/main.cpp b/src/main.cpp
+index df51901a..917f4932 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -50,7 +50,10 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
+                 std::_Exit(EXIT_FAILURE);
+             return;
+         }
+-        SKSE::AllocTrampoline(static_cast<size_t>(1) << 5);
++        // P+ 1.7.104 port: SKSE::AllocTrampoline() is [[deprecated]] in current
++        // CommonLibSSE-NG (upstream moved trampoline allocation into SKSE::Init).
++        // The trampoline is now requested through InitInfo in SKSEPlugin_Load
++        // below; deliberately no allocation call here.
+         Thread::Collision::CollisionHandler::Install();
+         Thread::NiNode::NiUpdate::Install();
+         Registry::Library::GetSingleton()->Initialize();
+@@ -70,7 +73,9 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
+     }
+ }
+ 
+-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
++// P+ 1.7.104 port: current CommonLibSSE-NG replaces the old SKSEAPI/DLLEXPORT
++// pair with the SKSE_PLUGIN_LOAD() macro (SKSE_EXPORT under the hood).
++SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_skse)
+ {
+     constexpr auto PLUGIN_NAME = "SexLabUtil"sv;
+     const auto InitLogger = [&]() -> bool {
+@@ -103,7 +108,10 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
+         return false;
+     }
+ 
+-    SKSE::Init(a_skse);
++    // P+ 1.7.104 port: allocate the trampoline here, the replacement for the
++    // removed SKSE::AllocTrampoline(1 << 5) call (32 bytes; only two
++    // trampoline.write_call<5> hooks exist) and the old AllocTrampoline(14).
++    SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = static_cast<std::size_t>(1) << 5 });
+     logger::info("{} loaded", PLUGIN_NAME);
+ 
+     const auto msging = SKSE::GetMessagingInterface();

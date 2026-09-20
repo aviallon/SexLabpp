@@ -12,6 +12,22 @@ index c2cd7ddc..a640d178 100644
  
          T::func = trampoline.write_call<5>(a_src, T::thunk);
      }
+diff --git a/src/Registry/Define/Voice.cpp b/src/Registry/Define/Voice.cpp
+index 5af260d9..39d007bb 100644
+--- a/src/Registry/Define/Voice.cpp
++++ b/src/Registry/Define/Voice.cpp
+@@ -23,7 +23,10 @@ namespace Registry
+           if (node.IsScalar())
+               return { RaceKey{ node.as<std::string>() } };
+           return std::ranges::fold_left(node, decltype(races){}, [](auto acc, auto&& it) {
+-              acc.emplace_back(it.as<std::string>());
++              // P+ 1.7.104 port (same fix as upstream 2.18.1): `it` is dependent
++              // inside this generic lambda, so MSVC C4864 requires the template
++              // keyword. Warnings are errors in this project.
++              acc.emplace_back(it.template as<std::string>());
+               return acc;
+           });
+       }()),
 diff --git a/src/main.cpp b/src/main.cpp
 index df51901a..917f4932 100644
 --- a/src/main.cpp

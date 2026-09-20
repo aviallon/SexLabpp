@@ -39,16 +39,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref || 'e6364f8c' }}
+          # No ref: here - actions/checkout resolves refs as branch/tag NAMES
+          # and rejects a raw commit SHA. The wanted revision is checked out in
+          # the next step instead, from the full history fetched here.
           submodules: recursive
           fetch-depth: 0
 
-      - name: Confirm the source version
+      - name: Check out the source revision
         shell: bash
         run: |
+          want="${{ github.event.inputs.ref || 'e6364f8c' }}"
+          label="${{ github.event.inputs.label || '2.17.1' }}"
+          git checkout --detach "$want"
+          git submodule update --init --recursive
           ver=$(grep -m1 PROJECT_VERSION xmake.lua | sed 's/.*"\(.*\)".*/\1/')
-          echo "PROJECT_VERSION=$ver  commit=$(git rev-parse --short HEAD)"
-          echo "label=${{ github.event.inputs.label || '2.17.1' }}"
+          echo "source commit $(git rev-parse --short HEAD)  PROJECT_VERSION=$ver  label=$label"
+          # A DLL has to match the scripts it is installed over, so refuse to
+          # build a source revision whose version is not the one advertised.
+          test "$ver" = "$label" || { echo "::error::PROJECT_VERSION=$ver does not match label=$label"; exit 1; }
+
 
       # Done here rather than by pinning the gitlink: it keeps the diff to
       # upstream reviewable (one commit hash, printed in the log) and works even

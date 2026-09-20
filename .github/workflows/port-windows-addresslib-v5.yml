@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          ref: ${{ github.event.inputs.ref || 'e6364f8c' }}
           submodules: recursive
           fetch-depth: 0
 
@@ -48,7 +48,7 @@ jobs:
         run: |
           ver=$(grep -m1 PROJECT_VERSION xmake.lua | sed 's/.*"\(.*\)".*/\1/')
           echo "PROJECT_VERSION=$ver  commit=$(git rev-parse --short HEAD)"
-          [ -n "${{ github.event.inputs.label }}" ] && echo "label=${{ github.event.inputs.label }}"
+          echo "label=${{ github.event.inputs.label || 2.17.1 }}"
 
       # Done here rather than by pinning the gitlink: it keeps the diff to
       # upstream reviewable (one commit hash, printed in the log) and works even
